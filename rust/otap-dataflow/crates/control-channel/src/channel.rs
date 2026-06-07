@@ -967,7 +967,7 @@ mod sender_waiters_tests {
     }
 
     fn noop_waker() -> Waker {
-        Waker::noop()
+        Waker::noop().clone()
     }
 
     #[test]
