@@ -1986,7 +1986,7 @@ mod tests {
         let provider = Arc::new(MockSegmentProvider::new());
         provider.add_segment_with_items(1, 3, 100);
 
-        let (bundles, items) = provider.segment_drop_counts(SegmentSeq::new(1)).unwrap();
+        let (bundles, items, _slot_counts) = provider.segment_drop_counts(SegmentSeq::new(1)).unwrap();
         assert_eq!(bundles, 3);
         assert_eq!(
             items, 300,

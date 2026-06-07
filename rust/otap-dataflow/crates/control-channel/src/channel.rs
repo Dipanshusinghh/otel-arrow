@@ -943,13 +943,7 @@ mod sender_waiters_tests {
     use std::sync::{Arc, Mutex};
     use std::task::{Wake, Waker};
 
-    struct NoopWake;
 
-    impl Wake for NoopWake {
-        fn wake(self: Arc<Self>) {}
-
-        fn wake_by_ref(self: &Arc<Self>) {}
-    }
 
     struct RecordingWake {
         id: usize,
@@ -973,7 +967,7 @@ mod sender_waiters_tests {
     }
 
     fn noop_waker() -> Waker {
-        Waker::from(Arc::new(NoopWake))
+        Waker::noop()
     }
 
     #[test]
