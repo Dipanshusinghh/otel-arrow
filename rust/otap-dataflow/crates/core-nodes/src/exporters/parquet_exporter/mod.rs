@@ -63,7 +63,7 @@ use otel_arrow_dfe_otap::pdata::OtapPdata;
 use otel_arrow_dfe_pdata::TryIntoWithOptions;
 use otel_arrow_dfe_pdata::otap::OtapArrowRecords;
 use otel_arrow_dfe_telemetry::common_attributes::{Outcome, SignalOutcomeAttributes};
-use otel_arrow_dfe_telemetry::metrics::{MeasurementMetricSet, MetricSet, MetricSetHandler};
+use otel_arrow_dfe_telemetry::metrics::MeasurementMetricSet;
 use std::io::ErrorKind;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -78,7 +78,7 @@ pub struct ParquetExporter {
         Box<dyn otel_arrow_dfe_engine::shared::capability::auth::bearer_token_provider::BearerTokenProvider>,
     >,
     pdata_metrics: Option<MeasurementMetricSet<ExporterExportMetrics>>,
-    io_metrics: Option<MetricSet<metrics::ParquetExporterMetrics>>,
+    io_metrics: Option<metrics::ParquetExporterMetrics>,
 }
 
 /// Declares the Parquet exporter as a local exporter factory
@@ -142,7 +142,7 @@ impl ParquetExporter {
         })?;
 
         let pdata_metrics = ExporterExportMetrics::register(&pipeline_ctx);
-        let io_metrics = pipeline_ctx.register_metrics::<metrics::ParquetExporterMetrics>();
+        let io_metrics = metrics::ParquetExporterMetrics::register(&pipeline_ctx);
 
         Ok(ParquetExporter {
             config,
@@ -155,7 +155,7 @@ impl ParquetExporter {
     fn terminal_state(
         deadline: Instant,
         mut pdata_metrics: Option<MeasurementMetricSet<ExporterExportMetrics>>,
-        io_metrics: Option<MetricSet<metrics::ParquetExporterMetrics>>,
+        mut io_metrics: Option<metrics::ParquetExporterMetrics>,
     ) -> TerminalState {
         let mut snapshots = Vec::new();
 
@@ -163,10 +163,8 @@ impl ParquetExporter {
             snapshots.extend(metrics.terminal_snapshots());
         }
 
-        if let Some(metrics) = &io_metrics {
-            if metrics.needs_flush() {
-                snapshots.push(metrics.snapshot());
-            }
+        if let Some(metrics) = &mut io_metrics {
+            snapshots.extend(metrics.terminal_snapshots());
         }
 
         TerminalState::new(deadline, snapshots)
@@ -265,7 +263,7 @@ impl Exporter<OtapPdata> for ParquetExporter {
                         _ = metrics_reporter.report_measurement(metrics);
                     }
                     if let Some(metrics) = self.io_metrics.as_mut() {
-                        _ = metrics_reporter.report(metrics);
+                        _ = metrics.report(&mut metrics_reporter);
                     }
                 }
                 Message::Control(NodeControlMsg::Config { .. }) => {
@@ -484,35 +482,65 @@ impl Exporter<OtapPdata> for ParquetExporter {
     }
 }
 
-fn record_io_metrics(
-    io: &mut MetricSet<metrics::ParquetExporterMetrics>,
-    stats: writer::WriteStats,
-) {
+fn record_io_metrics(io: &mut metrics::ParquetExporterMetrics, stats: writer::WriteStats) {
     if stats.files_created > 0 {
-        io.files_created.add(stats.files_created);
+        io.files
+            .with(metrics::ParquetExporterFileAttributes {
+                operation: metrics::FileOperation::Created,
+            })
+            .count
+            .add(stats.files_created);
     }
     if stats.files_closed > 0 {
-        io.files_closed.add(stats.files_closed);
+        io.files
+            .with(metrics::ParquetExporterFileAttributes {
+                operation: metrics::FileOperation::Closed,
+            })
+            .count
+            .add(stats.files_closed);
     }
     if stats.rows_written > 0 {
-        io.rows_written.add(stats.rows_written);
+        io.rows.written.add(stats.rows_written);
     }
     if stats.flush_scheduled_max_rows > 0 {
-        io.flush_scheduled_max_rows
+        io.files
+            .with(metrics::ParquetExporterFileAttributes {
+                operation: metrics::FileOperation::FlushScheduledMaxRows,
+            })
+            .count
             .add(stats.flush_scheduled_max_rows);
     }
     if stats.flush_scheduled_max_age > 0 {
-        io.flush_scheduled_max_age
+        io.files
+            .with(metrics::ParquetExporterFileAttributes {
+                operation: metrics::FileOperation::FlushScheduledMaxAge,
+            })
+            .count
             .add(stats.flush_scheduled_max_age);
     }
     if stats.flush_attempts > 0 {
-        io.flush_attempts.add(stats.flush_attempts);
+        io.files
+            .with(metrics::ParquetExporterFileAttributes {
+                operation: metrics::FileOperation::FlushAttempts,
+            })
+            .count
+            .add(stats.flush_attempts);
     }
     if stats.flush_successes > 0 {
-        io.flush_successes.add(stats.flush_successes);
+        io.files
+            .with(metrics::ParquetExporterFileAttributes {
+                operation: metrics::FileOperation::FlushSuccesses,
+            })
+            .count
+            .add(stats.flush_successes);
     }
     if stats.flush_failures > 0 {
-        io.flush_failures.add(stats.flush_failures);
+        io.files
+            .with(metrics::ParquetExporterFileAttributes {
+                operation: metrics::FileOperation::FlushFailures,
+            })
+            .count
+            .add(stats.flush_failures);
     }
 }
 
