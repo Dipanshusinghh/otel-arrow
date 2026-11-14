@@ -751,18 +751,38 @@ async fn startup_failure_reports_diagnostics_without_attempt() {
             .unwrap();
         assert!(futures::poll!(&mut collect).is_pending());
         let reported: Vec<_> = reports.drain().collect();
-        assert_eq!(reported.len(), 1, "startup only reports source diagnostics");
         assert_eq!(
-            reported[0].descriptor().name,
-            "receiver.windows_perf_counters"
+            reported.len(),
+            2,
+            "startup reports source diagnostics and failure measurements"
         );
-        let failures = reported[0]
+        let operational = reported
+            .iter()
+            .find(|snapshot| {
+                snapshot.descriptor().name == "receiver.windows_perf_counters"
+                    && snapshot
+                        .descriptor()
+                        .metrics
+                        .iter()
+                        .any(|metric| metric.name == "counter.add.failures")
+            })
+            .unwrap();
+        let failures = operational
             .descriptor()
             .metrics
             .iter()
             .position(|metric| metric.name == "counter.add.failures")
             .unwrap();
-        assert_eq!(reported[0].get_metrics()[failures].to_u64_lossy(), 1);
+        assert_eq!(operational.get_metrics()[failures].to_u64_lossy(), 1);
+
+        let operation_failure = reported
+            .iter()
+            .find(|snapshot| {
+                snapshot.descriptor().name == "receiver.windows_perf_counters"
+                    && snapshot.measurement_attribute_value("operation") == Some("collect")
+            })
+            .unwrap();
+        assert_eq!(operation_failure.get_metrics()[0].to_u64_lossy(), 1);
     }
     assert!(
         scrapes.0.borrow().is_empty(),

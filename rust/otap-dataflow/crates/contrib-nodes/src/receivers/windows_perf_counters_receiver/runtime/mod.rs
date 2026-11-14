@@ -273,7 +273,7 @@ impl WindowsPerfCountersReceiver {
                 message = control.recv() => match message.map_err(Error::ChannelRecvError)? {
                     NodeControlMsg::CollectTelemetry { mut metrics_reporter } => {
                         let _ = metrics_reporter.report(&mut self.metrics);
-                        let _ = self.counter_failures.report(&mut metrics_reporter);
+                        let _ = metrics_reporter.report_measurement(&mut self.counter_failures);
                         let _ = self.boundary.report(&mut metrics_reporter);
                     }
                     NodeControlMsg::DrainIngress { deadline, .. } => return Ok((deadline, true)),
